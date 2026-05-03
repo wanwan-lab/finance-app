@@ -403,6 +403,12 @@ YEN_INPUT_KEYS: tuple[str, ...] = tuple(YEN_INPUT_DEFAULTS.keys())
 
 DEFAULT_GROWTH_PCT = 0.0
 
+SITE_TIMING_DEFAULTS: dict[str, int] = {
+    "_lag_collection": 0,
+    "_lag_pay_cogs": 0,
+    "_lag_pay_fixed": 0,
+}
+
 SCENARIO_SENSITIVITY_DEFAULTS: dict[str, float] = {
     "_s_downside": 20.0,
     "_s_cost_up": 20.0,
@@ -501,26 +507,39 @@ with st.sidebar:
         st.caption(f"粗利率（参考）: {implied_gm:.1f}％（売上 − 仕入）")
 
     st.subheader("キャッシュのタイミング（サイト）")
+    _st1, _st2 = st.columns(2)
+    with _st1:
+        if st.button("サイトを初期値に戻す", use_container_width=True, key="_btn_site_reset"):
+            for _lk, _lv in SITE_TIMING_DEFAULTS.items():
+                st.session_state[_lk] = _lv
+            st.rerun()
+    with _st2:
+        if st.button("実行", use_container_width=True, key="_btn_site_run"):
+            st.rerun()
+
     collection_lag = st.slider(
         "入金サイト（売上を計上してから現金が入るまでの月数）",
         min_value=0,
         max_value=3,
-        value=0,
+        value=SITE_TIMING_DEFAULTS["_lag_collection"],
         help="0で当月入金。1以上にすると、はじめの月はシミュレーション前の売上がないため入金 0 円の月が出ます。",
+        key="_lag_collection",
     )
     payment_lag_cogs = st.slider(
         "支払サイト（仕入）",
         min_value=0,
         max_value=3,
-        value=0,
+        value=SITE_TIMING_DEFAULTS["_lag_pay_cogs"],
         help="0で当月支払。仕入（原価）の現金が出るのを指定月数だけ遅らせます。",
+        key="_lag_pay_cogs",
     )
     payment_lag_fixed = st.slider(
         "支払サイト（固定費）",
         min_value=0,
         max_value=3,
-        value=0,
+        value=SITE_TIMING_DEFAULTS["_lag_pay_fixed"],
         help="0で当月支払。固定費内訳の合計の現金が出るのを指定月数だけ遅らせます。",
+        key="_lag_pay_fixed",
     )
     st.caption(
         "売上が毎月同額でも、**入金サイト**を遅らせると最初の月の入金が遅れ、"
