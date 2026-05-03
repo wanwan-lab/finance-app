@@ -147,14 +147,18 @@ def revenue_for_cash_month(
     collection_lag_months: int,
     base_monthly_sales: float,
     growth_pct: float,
+    max_revenue_month: int = 12,
 ) -> float:
     """
     入金サイト分ずらした「当月のキャッシュインに対応する売上」。
-    認識月 index = calendar_month - lag。index < 1 のときは過去実績がないため入力の月次売上を使用。
+    認識月 index = calendar_month - lag。index < 1 のときはシミュレーション開始前のため **現金入金 0**。
+    index が試算期間を超える場合は最終月の認識売上に丸める。
     """
     accrual_month = calendar_month - collection_lag_months
     if accrual_month < 1:
-        return base_monthly_sales
+        return 0.0
+    if accrual_month > max_revenue_month:
+        return revenue_in_month(base_monthly_sales, growth_pct, max_revenue_month)
     return revenue_in_month(base_monthly_sales, growth_pct, accrual_month)
 
 
@@ -165,13 +169,16 @@ def expense_for_cash_month(
 ) -> float:
     """
     支払サイト分ずらした「当月のキャッシュアウトに対応する支出」。
-    monthly_expense_series[m-1] = 認識ベースの m 月目の月次支出合計。
-    index < 1 のときはシミュレーション開始前とみなし、月1と同じ水準（入力ベース）を使用。
+    monthly_expense_series[m-1] = 認識ベースの m 月目の月次金額（仕入または固定費など）。
+    認識月 index = calendar_month - lag。index < 1 のときはシミュレーション開始前のため **現金支出 0**。
+    （旧仕様の「月1水準で代用」だと月次が一定のときサイトを変えても金額が一切変わらないため廃止。）
     """
     accrual_month = calendar_month - payment_lag_months
     if accrual_month < 1:
-        accrual_month = 1
-    return monthly_expense_series[accrual_month - 1]
+        return 0.0
+    if accrual_month > len(monthly_expense_series):
+        return float(monthly_expense_series[-1])
+    return float(monthly_expense_series[accrual_month - 1])
 
 
 def build_monthly_expense_series(costs: CostBreakdown, months: int) -> list[float]:
@@ -211,7 +218,9 @@ def project_cash_monthly(
         gp = gross_profit(rev, monthly_cogs)
         exp = costs.total()
 
-        rev_cash = revenue_for_cash_month(m, collection_lag_months, base_monthly_sales, growth_pct)
+        rev_cash = revenue_for_cash_month(
+            m, collection_lag_months, base_monthly_sales, growth_pct, months
+        )
         gp_cash_ref = gross_profit(rev_cash, monthly_cogs)
         fixed_cash = expense_for_cash_month(m, payment_lag_fixed_months, fixed_series)
         cogs_cash = expense_for_cash_month(m, payment_lag_cogs_months, cogs_series)
@@ -371,10 +380,9 @@ st.title("ランウェイ診断")
 st.caption("約3分で「あと何ヶ月もつか」をざっくり把握するためのダッシュボードです。")
 
 st.info(
-    "**入金サイト**を1ヶ月に設定すると、売上に紐づく入金がシミュレーション上で1ヶ月後ろにずれます"
-    "（例: 2ヶ月目の入金は、認識ベースでは1ヶ月目の売上を元に計算）。"
-    " **支払サイト（仕入）**と**支払サイト（固定費）**は別々に、それぞれ仕入と固定費の現金が出るタイミングをずらします。"
-    " シミュレーション開始前の月が参照される場合は、**入力の月次売上**および**月1の仕入・固定費水準**で代用します。"
+    "**入金サイト** … 売上の認識と現金入金のずれ。サイトで先にずれると、**はじめの月は入金が入らない** 月が出ます。"
+    " **支払サイト（仕入）・（固定費）** … 仕入と固定費それぞれの現金の出タイミング。"
+    " いずれも、シミュレーション開始より前にずれ込む分は **現金 0**（入金も支払も発生しない）とみなします。"
 )
 
 ScenarioKey = Literal["base", "downside", "cost_up", "improve"]
@@ -500,7 +508,7 @@ with st.sidebar:
         min_value=0,
         max_value=3,
         value=0,
-        help="0で当月入金。1なら売上に対応する入金が1ヶ月遅れます。",
+        help="0で当月入金。1以上にすると、はじめの月はシミュレーション前の売上がないため入金 0 円の月が出ます。",
     )
     payment_lag_cogs = st.slider(
         "支払サイト（仕入）",
@@ -515,6 +523,10 @@ with st.sidebar:
         max_value=3,
         value=0,
         help="0で当月支払。固定費内訳の合計の現金が出るのを指定月数だけ遅らせます。",
+    )
+    st.caption(
+        "売上が毎月同額でも、**入金サイト**を遅らせると最初の月の入金が遅れ、"
+        "**支払サイト**を遅らせると最初の月の支出が遅れます。どちらもランウェイやグラフに反映されます。"
     )
 
     st.subheader("固定費の内訳（円／月）")
