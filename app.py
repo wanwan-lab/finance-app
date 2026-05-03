@@ -180,6 +180,11 @@ def build_monthly_expense_series(costs: CostBreakdown, months: int) -> list[floa
     return [e for _ in range(months)]
 
 
+def build_monthly_cogs_series(monthly_cogs: float, months: int) -> list[float]:
+    """認識ベースの各月の仕入（シミュレーション内では月ごとに一定）。"""
+    return [monthly_cogs for _ in range(months)]
+
+
 def project_cash_monthly(
     initial_cash: float,
     base_monthly_sales: float,
@@ -187,14 +192,18 @@ def project_cash_monthly(
     monthly_cogs: float,
     costs: CostBreakdown,
     collection_lag_months: int,
-    payment_lag_months: int,
+    payment_lag_cogs_months: int,
+    payment_lag_fixed_months: int,
     months: int = 12,
 ) -> pd.DataFrame:
     """
     月末現金残高の推移（サイト考慮）。
-    粗利の入金は入金サイト分遅れ、固定費の支払は支払サイト分遅れた認識月の金額を当月キャッシュに反映。
+    売上の入金は入金サイト分遅れ。
+    仕入と固定費はそれぞれ別の支払サイトで当月キャッシュアウトに反映。
+    ネットバーンは max(0, 仕入キャッシュアウト + 固定費キャッシュアウト − 入金反映売上)（現金が増えない試算にクリップ）。
     """
-    expense_series = build_monthly_expense_series(costs, months)
+    fixed_series = build_monthly_expense_series(costs, months)
+    cogs_series = build_monthly_cogs_series(monthly_cogs, months)
     rows: list[dict] = []
     cash_start = initial_cash
     for m in range(1, months + 1):
@@ -203,10 +212,12 @@ def project_cash_monthly(
         exp = costs.total()
 
         rev_cash = revenue_for_cash_month(m, collection_lag_months, base_monthly_sales, growth_pct)
-        gp_cash = gross_profit(rev_cash, monthly_cogs)
-        exp_cash = expense_for_cash_month(m, payment_lag_months, expense_series)
+        gp_cash_ref = gross_profit(rev_cash, monthly_cogs)
+        fixed_cash = expense_for_cash_month(m, payment_lag_fixed_months, fixed_series)
+        cogs_cash = expense_for_cash_month(m, payment_lag_cogs_months, cogs_series)
+        total_out_cash = fixed_cash + cogs_cash
 
-        net_burn = max(0.0, exp_cash - gp_cash)
+        net_burn = max(0.0, total_out_cash - rev_cash)
 
         cash_end = cash_start - net_burn
         rows.append(
@@ -215,9 +226,11 @@ def project_cash_monthly(
                 "月次売上（認識）": rev,
                 "粗利（認識）": gp,
                 "入金サイト反映売上": rev_cash,
-                "入金サイト反映粗利": gp_cash,
-                "月次支出合計（認識）": exp,
-                "支払サイト反映支出": exp_cash,
+                "入金サイト反映粗利（参考）": gp_cash_ref,
+                "月次支出合計（認識・固定費のみ）": exp,
+                "支払サイト反映仕入": cogs_cash,
+                "支払サイト反映固定費": fixed_cash,
+                "支払キャッシュアウト計": total_out_cash,
                 "ネットバーン": net_burn,
                 "月初現金": cash_start,
                 "月末現金": cash_end,
@@ -241,15 +254,17 @@ def runway_snapshot(
     monthly_cogs: float,
     costs: CostBreakdown,
     collection_lag_months: int,
-    payment_lag_months: int,
+    payment_lag_cogs_months: int,
+    payment_lag_fixed_months: int,
 ) -> RunwayResult:
     """月1のサイト調整後ネットバーンでランウェイを算出。"""
-    expenditure = costs.total()
-    expense_series = build_monthly_expense_series(costs, 12)
+    expenditure = costs.total() + monthly_cogs
+    fixed_series = build_monthly_expense_series(costs, 12)
+    cogs_series = build_monthly_cogs_series(monthly_cogs, 12)
     rev_cash_m1 = revenue_for_cash_month(1, collection_lag_months, monthly_revenue, growth_pct)
-    gp_cash_m1 = gross_profit(rev_cash_m1, monthly_cogs)
-    exp_cash_m1 = expense_for_cash_month(1, payment_lag_months, expense_series)
-    net_burn = max(0.0, exp_cash_m1 - gp_cash_m1)
+    fixed_cash_m1 = expense_for_cash_month(1, payment_lag_fixed_months, fixed_series)
+    cogs_cash_m1 = expense_for_cash_month(1, payment_lag_cogs_months, cogs_series)
+    net_burn = max(0.0, fixed_cash_m1 + cogs_cash_m1 - rev_cash_m1)
 
     df = project_cash_monthly(
         initial_cash,
@@ -258,7 +273,8 @@ def runway_snapshot(
         monthly_cogs,
         costs,
         collection_lag_months,
-        payment_lag_months,
+        payment_lag_cogs_months,
+        payment_lag_fixed_months,
         12,
     )
     short_m = first_shortfall_month(df)
@@ -355,10 +371,10 @@ st.title("ランウェイ診断")
 st.caption("約3分で「あと何ヶ月もつか」をざっくり把握するためのダッシュボードです。")
 
 st.info(
-    "**入金サイト**を1ヶ月に設定すると、売上に紐づく粗利の入金がシミュレーション上で1ヶ月後ろにずれます"
+    "**入金サイト**を1ヶ月に設定すると、売上に紐づく入金がシミュレーション上で1ヶ月後ろにずれます"
     "（例: 2ヶ月目の入金は、認識ベースでは1ヶ月目の売上を元に計算）。"
-    " **支払サイト**を1ヶ月にすると、固定費の支払が1ヶ月遅れた月の発生額として扱われます。"
-    " シミュレーション開始前の月が参照される場合は、**入力の月次売上**および**月1の支出水準**で代用します。"
+    " **支払サイト（仕入）**と**支払サイト（固定費）**は別々に、それぞれ仕入と固定費の現金が出るタイミングをずらします。"
+    " シミュレーション開始前の月が参照される場合は、**入力の月次売上**および**月1の仕入・固定費水準**で代用します。"
 )
 
 ScenarioKey = Literal["base", "downside", "cost_up", "improve"]
@@ -484,14 +500,21 @@ with st.sidebar:
         min_value=0,
         max_value=3,
         value=0,
-        help="0で当月入金。1なら粗利の入金が1ヶ月遅れます。",
+        help="0で当月入金。1なら売上に対応する入金が1ヶ月遅れます。",
     )
-    payment_lag = st.slider(
-        "支払サイト（費用を発生させてから現金が出ていくまでの月数）",
+    payment_lag_cogs = st.slider(
+        "支払サイト（仕入）",
         min_value=0,
         max_value=3,
         value=0,
-        help="0で当月支払。固定費の支払タイミングをずらして計算します。",
+        help="0で当月支払。仕入（原価）の現金が出るのを指定月数だけ遅らせます。",
+    )
+    payment_lag_fixed = st.slider(
+        "支払サイト（固定費）",
+        min_value=0,
+        max_value=3,
+        value=0,
+        help="0で当月支払。固定費内訳の合計の現金が出るのを指定月数だけ遅らせます。",
     )
 
     st.subheader("固定費の内訳（円／月）")
@@ -573,7 +596,8 @@ SCENARIO_SPECS = build_scenario_specs(downside_pct, cost_up_pct, improve_cuts)
 def build_runway_for_scenario(
     key: ScenarioKey,
     collection_lag_m: int,
-    payment_lag_m: int,
+    payment_lag_cogs_m: int,
+    payment_lag_fixed_m: int,
 ) -> tuple[RunwayResult, pd.DataFrame]:
     spec = SCENARIO_SPECS[key]
     rf = spec.revenue_factor
@@ -586,7 +610,8 @@ def build_runway_for_scenario(
         cogs,
         costs,
         collection_lag_m,
-        payment_lag_m,
+        payment_lag_cogs_m,
+        payment_lag_fixed_m,
     )
     df = project_cash_monthly(
         cash,
@@ -595,20 +620,23 @@ def build_runway_for_scenario(
         cogs,
         costs,
         collection_lag_m,
-        payment_lag_m,
+        payment_lag_cogs_m,
+        payment_lag_fixed_m,
         12,
     )
     return r, df
 
 
-base_result, df_base = build_runway_for_scenario("base", collection_lag, payment_lag)
+base_result, df_base = build_runway_for_scenario(
+    "base", collection_lag, payment_lag_cogs, payment_lag_fixed
+)
 label_risk, sub_risk, color_key = risk_level(base_result)
 state_txt, risk_txt, action_txt = diagnostic_comment(base_result, df_base)
 
 # --- ダッシュボード KPI ---
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 with kpi1:
-    st.metric("月の支出の合計（グロスバーン）", f"{fmt_yen0(base_result.gross_burn)} 円")
+    st.metric("月の支出合計（固定費＋仕入・認識）", f"{fmt_yen0(base_result.gross_burn)} 円")
 with kpi2:
     st.metric("月の現金の減り（ネットバーン）", f"{fmt_yen0(base_result.net_burn)} 円")
 with kpi3:
@@ -632,7 +660,7 @@ scenario_rows: list[dict] = []
 scenario_dfs: dict[str, pd.DataFrame] = {}
 
 for sk, spec in SCENARIO_SPECS.items():
-    rr, dff = build_runway_for_scenario(sk, collection_lag, payment_lag)
+    rr, dff = build_runway_for_scenario(sk, collection_lag, payment_lag_cogs, payment_lag_fixed)
     scenario_dfs[spec.title] = dff
     scenario_rows.append(
         {
