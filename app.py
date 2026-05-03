@@ -101,6 +101,27 @@ def fmt_yen0(yen: float) -> str:
     return f"{int(round(yen)):,}"
 
 
+def yen_text_input(label: str, key: str, default_yen: float, help_: Optional[str] = None) -> float:
+    """
+    円のテキスト入力（#,##0 表示）。数字以外は無視して解釈し、確定時にカンマを整形する。
+    """
+    if key not in st.session_state:
+        st.session_state[key] = fmt_yen0(int(round(default_yen)))
+    st.text_input(label, key=key, help=help_)
+    raw = str(st.session_state[key])
+    if raw.strip() == "":
+        return 0.0
+    digits = "".join(c for c in raw if c.isdigit())
+    if not digits:
+        return 0.0
+    n = max(0, int(digits))
+    formatted = fmt_yen0(float(n))
+    if formatted != raw:
+        st.session_state[key] = formatted
+        st.session_state["_fmt_yen_rerun"] = True
+    return float(n)
+
+
 def compute_burns(monthly_revenue: float, monthly_cogs: float, costs: CostBreakdown) -> tuple[float, float]:
     """Gross Burn = 月次支出合計。Net Burn = max(0, 支出 - 粗利)（認識ベース・サイトなしの当月）。"""
     expenditure = costs.total()
@@ -337,6 +358,28 @@ st.info(
 
 ScenarioKey = Literal["base", "downside", "cost_up", "improve"]
 
+YEN_INPUT_KEYS: tuple[str, ...] = (
+    "_yen_inp_cash",
+    "_yen_inp_sales",
+    "_yen_inp_cogs",
+    "_yen_inp_personnel",
+    "_yen_inp_rent",
+    "_yen_inp_ad",
+    "_yen_inp_out",
+    "_yen_inp_sys",
+    "_yen_inp_other",
+    "_yen_inp_loan",
+    "_yen_inp_tax",
+)
+
+SCENARIO_SENSITIVITY_DEFAULTS: dict[str, float] = {
+    "_s_downside": 20.0,
+    "_s_cost_up": 20.0,
+    "_s_cut_ad": 45.0,
+    "_s_cut_out": 45.0,
+    "_s_cut_other": 12.0,
+}
+
 
 @dataclass(frozen=True)
 class ScenarioSpec:
@@ -389,17 +432,24 @@ def build_scenario_specs(
 
 with st.sidebar:
     st.header("入力")
-    cash = st.number_input("現預金残高（円）", min_value=0.0, value=8_000_000.0, step=100_000.0, format="%.0f")
-    sales = st.number_input("月次売上（円／月）", min_value=0.0, value=3_000_000.0, step=50_000.0, format="%.0f")
-    cogs = st.number_input(
+    st.session_state["_fmt_yen_rerun"] = False
+    st.caption("金額は #,##0 形式（1円単位・カンマ区切り）で表示・入力できます。")
+    cash = yen_text_input("現預金残高（円）", "_yen_inp_cash", 8_000_000.0)
+    sales = yen_text_input("月次売上（円／月）", "_yen_inp_sales", 3_000_000.0)
+    cogs = yen_text_input(
         "月次仕入（円／月）",
-        min_value=0.0,
-        value=1_800_000.0,
-        step=50_000.0,
-        format="%.0f",
+        "_yen_inp_cogs",
+        1_800_000.0,
         help="粗利は「月次売上 − 月次仕入」で計算します。シミュレーション中はこの仕入額を月ごとに一定とみなします。",
     )
-    growth = st.number_input("売上成長率（％／月）", min_value=-50.0, value=0.0, step=0.5, format="%.1f")
+    growth = st.number_input(
+        "売上成長率（％／月）",
+        min_value=-50.0,
+        value=0.0,
+        step=0.5,
+        format="%.1f",
+        key="_inp_growth",
+    )
     if sales > 0:
         implied_gm = max(0.0, min(100.0, (sales - cogs) / sales * 100.0))
         st.caption(f"粗利率（参考）: {implied_gm:.1f}％（売上 − 仕入）")
@@ -421,22 +471,83 @@ with st.sidebar:
     )
 
     st.subheader("固定費の内訳（円／月）")
-    c_personnel = st.number_input("人件費", min_value=0.0, value=1_200_000.0, step=10_000.0, format="%.0f")
-    c_rent = st.number_input("家賃", min_value=0.0, value=300_000.0, step=10_000.0, format="%.0f")
-    c_ad = st.number_input("広告費", min_value=0.0, value=150_000.0, step=10_000.0, format="%.0f")
-    c_out = st.number_input("外注費", min_value=0.0, value=200_000.0, step=10_000.0, format="%.0f")
-    c_sys = st.number_input("システム費", min_value=0.0, value=80_000.0, step=5_000.0, format="%.0f")
-    c_other = st.number_input("その他", min_value=0.0, value=120_000.0, step=10_000.0, format="%.0f")
-    c_loan = st.number_input("借入返済", min_value=0.0, value=100_000.0, step=10_000.0, format="%.0f")
-    c_tax = st.number_input("税金・社保", min_value=0.0, value=250_000.0, step=10_000.0, format="%.0f")
+    c_personnel = yen_text_input("人件費", "_yen_inp_personnel", 1_200_000.0)
+    c_rent = yen_text_input("家賃", "_yen_inp_rent", 300_000.0)
+    c_ad = yen_text_input("広告費", "_yen_inp_ad", 150_000.0)
+    c_out = yen_text_input("外注費", "_yen_inp_out", 200_000.0)
+    c_sys = yen_text_input("システム費", "_yen_inp_sys", 80_000.0)
+    c_other = yen_text_input("その他", "_yen_inp_other", 120_000.0)
+    c_loan = yen_text_input("借入返済", "_yen_inp_loan", 100_000.0)
+    c_tax = yen_text_input("税金・社保", "_yen_inp_tax", 250_000.0)
 
-    st.subheader("シミュレーション設定")
-    downside_pct = st.slider("下振れシナリオの売上減少率（％）", 0.0, 80.0, 20.0, 1.0)
-    cost_up_pct = st.slider("費用増シナリオの支出増加率（％）", 0.0, 80.0, 20.0, 1.0)
+    st.subheader("金額入力の操作")
+    _yc1, _yc2 = st.columns(2)
+    with _yc1:
+        if st.button("金額をクリア", use_container_width=True, key="_btn_yen_clear"):
+            for _k in YEN_INPUT_KEYS:
+                st.session_state[_k] = ""
+            st.session_state["_inp_growth"] = 0.0
+            st.rerun()
+    with _yc2:
+        if st.button("実行", use_container_width=True, key="_btn_yen_run"):
+            st.rerun()
+
+    st.subheader("シミュレーション設定（感応度分析）")
+    downside_pct = st.slider(
+        "下振れシナリオの売上減少率（％）",
+        0.0,
+        80.0,
+        SCENARIO_SENSITIVITY_DEFAULTS["_s_downside"],
+        1.0,
+        key="_s_downside",
+    )
+    cost_up_pct = st.slider(
+        "費用増シナリオの支出増加率（％）",
+        0.0,
+        80.0,
+        SCENARIO_SENSITIVITY_DEFAULTS["_s_cost_up"],
+        1.0,
+        key="_s_cost_up",
+    )
     st.caption("改善シナリオの削減率（％）")
-    cut_ad = st.slider("広告費の削減率", 0.0, 90.0, 45.0, 1.0)
-    cut_out = st.slider("外注費の削減率", 0.0, 90.0, 45.0, 1.0)
-    cut_other_fix = st.slider("その他固定費（その他・システム費）の削減率", 0.0, 90.0, 12.0, 1.0)
+    cut_ad = st.slider(
+        "広告費の削減率",
+        0.0,
+        90.0,
+        SCENARIO_SENSITIVITY_DEFAULTS["_s_cut_ad"],
+        1.0,
+        key="_s_cut_ad",
+    )
+    cut_out = st.slider(
+        "外注費の削減率",
+        0.0,
+        90.0,
+        SCENARIO_SENSITIVITY_DEFAULTS["_s_cut_out"],
+        1.0,
+        key="_s_cut_out",
+    )
+    cut_other_fix = st.slider(
+        "その他固定費（その他・システム費）の削減率",
+        0.0,
+        90.0,
+        SCENARIO_SENSITIVITY_DEFAULTS["_s_cut_other"],
+        1.0,
+        key="_s_cut_other",
+    )
+
+    st.subheader("感応度パラメータの操作")
+    _sc1, _sc2 = st.columns(2)
+    with _sc1:
+        if st.button("初期値に戻す", use_container_width=True, key="_btn_sens_reset"):
+            for _sk, _sv in SCENARIO_SENSITIVITY_DEFAULTS.items():
+                st.session_state[_sk] = _sv
+            st.rerun()
+    with _sc2:
+        if st.button("実行", use_container_width=True, key="_btn_sens_run"):
+            st.rerun()
+
+if st.session_state.get("_fmt_yen_rerun"):
+    st.rerun()
 
 base_costs = CostBreakdown(
     personnel=c_personnel,
