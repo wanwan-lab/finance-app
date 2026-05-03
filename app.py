@@ -88,7 +88,7 @@ class RunwayResult:
     net_burn: float
     runway_months: Optional[float]  # None = 資金減少なし
     runway_label: str
-    shortfall_month: Optional[int]  # 初めて月末現金が0未満になる月（1始まり）、なければ None
+    shortfall_month: Optional[int]  # 12ヶ月試算内で初めて月末現金が0未満になる月（1始まり）、なければ None
 
 
 def gross_profit(monthly_revenue: float, monthly_cogs: float) -> float:
@@ -250,6 +250,7 @@ def project_cash_monthly(
 
 
 def first_shortfall_month(df: pd.DataFrame) -> Optional[int]:
+    """df は project_cash_monthly の結果（通常12行）のみを対象とする。"""
     neg = df[df["月末現金"] < 0]
     if neg.empty:
         return None
@@ -666,8 +667,12 @@ with kpi2:
 with kpi3:
     st.metric("ランウェイ（目安）", base_result.runway_label)
 with kpi4:
-    short_txt = "なし" if base_result.shortfall_month is None else f"{base_result.shortfall_month} ヶ月目"
-    st.metric("資金ショートが出る月（試算）", short_txt)
+    short_txt = (
+        "12ヶ月以内はなし"
+        if base_result.shortfall_month is None
+        else f"{base_result.shortfall_month} ヶ月目"
+    )
+    st.metric("資金ショートが出る月（12ヶ月試算内）", short_txt)
 
 st.caption(
     "ネットバーンとランウェイ（目安）は、12ヶ月試算のうち **月次ネットバーンが最大の月** を基準にしています。"
@@ -697,7 +702,9 @@ for sk, spec in SCENARIO_SPECS.items():
             "グロスバーン（円／月）": rr.gross_burn,
             "ネットバーン（円／月）": rr.net_burn,
             "ランウェイ": rr.runway_label,
-            "資金ショート月（初回）": "—" if rr.shortfall_month is None else f"{rr.shortfall_month} ヶ月目",
+            "資金ショート月（12ヶ月内・初回）": (
+                "12ヶ月以内はなし" if rr.shortfall_month is None else f"{rr.shortfall_month} ヶ月目"
+            ),
         }
     )
 
