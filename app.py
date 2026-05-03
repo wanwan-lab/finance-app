@@ -754,21 +754,12 @@ with c3:
     st.write(action_txt)
 
 st.divider()
-st.subheader("CSVダウンロード")
-
-buf_forecast = io.StringIO()
-df_base.to_csv(buf_forecast, index=False, encoding="utf-8-sig")
-st.download_button(
-    label="12ヶ月予測表（Base Case）をCSVでダウンロード",
-    data=buf_forecast.getvalue().encode("utf-8-sig"),
-    file_name="runway_12m_forecast_base.csv",
-    mime="text/csv",
-)
+st.subheader("シナリオ比較表（CSV）")
 
 buf_scenarios = io.StringIO()
-df_compare.to_csv(buf_scenarios, index=False, encoding="utf-8-sig")
+df_compare_show.to_csv(buf_scenarios, index=False, encoding="utf-8-sig")
 st.download_button(
-    label="シナリオ比較表をCSVでダウンロード",
+    label="シナリオ比較表をCSVでダウンロード（円は#,##0表記）",
     data=buf_scenarios.getvalue().encode("utf-8-sig"),
     file_name="runway_scenario_compare.csv",
     mime="text/csv",
