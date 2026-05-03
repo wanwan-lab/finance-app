@@ -104,22 +104,27 @@ def fmt_yen0(yen: float) -> str:
 def yen_text_input(label: str, key: str, default_yen: float, help: Optional[str] = None) -> float:
     """
     円のテキスト入力（#,##0 表示）。数字以外は無視して解釈し、確定時にカンマを整形する。
+
+    同一ラン内で `st.text_input` の key に紐づく session_state を書き換えると
+    StreamlitAPIException になるため、整形は必ずウィジェット生成より前に行う。
     """
     if key not in st.session_state:
         st.session_state[key] = fmt_yen0(int(round(default_yen)))
-    st.text_input(label, key=key, help=help)
+
     raw = str(st.session_state[key])
-    if raw.strip() == "":
-        return 0.0
-    digits = "".join(c for c in raw if c.isdigit())
-    if not digits:
-        return 0.0
-    n = max(0, int(digits))
-    formatted = fmt_yen0(float(n))
-    if formatted != raw:
-        st.session_state[key] = formatted
-        st.session_state["_fmt_yen_rerun"] = True
-    return float(n)
+    parsed_yen = 0.0
+
+    if raw.strip() != "":
+        digits = "".join(c for c in raw if c.isdigit())
+        if digits:
+            n = max(0, int(digits))
+            parsed_yen = float(n)
+            formatted = fmt_yen0(parsed_yen)
+            if formatted != raw:
+                st.session_state[key] = formatted
+
+    st.text_input(label, key=key, help=help)
+    return parsed_yen
 
 
 def compute_burns(monthly_revenue: float, monthly_cogs: float, costs: CostBreakdown) -> tuple[float, float]:
@@ -436,8 +441,26 @@ def build_scenario_specs(
 
 with st.sidebar:
     st.header("入力")
-    st.session_state["_fmt_yen_rerun"] = False
     st.caption("金額は #,##0 形式（1円単位・カンマ区切り）で表示・入力できます。")
+
+    st.subheader("金額入力の操作")
+    _yc1, _yc2, _yc3 = st.columns(3)
+    with _yc1:
+        if st.button("金額をクリア", use_container_width=True, key="_btn_yen_clear"):
+            for _k in YEN_INPUT_KEYS:
+                st.session_state[_k] = ""
+            st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
+            st.rerun()
+    with _yc2:
+        if st.button("金額をデフォルトに戻す", use_container_width=True, key="_btn_yen_default"):
+            for _k, _v in YEN_INPUT_DEFAULTS.items():
+                st.session_state[_k] = fmt_yen0(int(round(_v)))
+            st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
+            st.rerun()
+    with _yc3:
+        if st.button("実行", use_container_width=True, key="_btn_yen_run"):
+            st.rerun()
+
     cash = yen_text_input("現預金残高（円）", "_yen_inp_cash", YEN_INPUT_DEFAULTS["_yen_inp_cash"])
     sales = yen_text_input("月次売上（円／月）", "_yen_inp_sales", YEN_INPUT_DEFAULTS["_yen_inp_sales"])
     cogs = yen_text_input(
@@ -484,25 +507,16 @@ with st.sidebar:
     c_loan = yen_text_input("借入返済", "_yen_inp_loan", YEN_INPUT_DEFAULTS["_yen_inp_loan"])
     c_tax = yen_text_input("税金・社保", "_yen_inp_tax", YEN_INPUT_DEFAULTS["_yen_inp_tax"])
 
-    st.subheader("金額入力の操作")
-    _yc1, _yc2, _yc3 = st.columns(3)
-    with _yc1:
-        if st.button("金額をクリア", use_container_width=True, key="_btn_yen_clear"):
-            for _k in YEN_INPUT_KEYS:
-                st.session_state[_k] = ""
-            st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
-            st.rerun()
-    with _yc2:
-        if st.button("金額をデフォルトに戻す", use_container_width=True, key="_btn_yen_default"):
-            for _k, _v in YEN_INPUT_DEFAULTS.items():
-                st.session_state[_k] = fmt_yen0(int(round(_v)))
-            st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
-            st.rerun()
-    with _yc3:
-        if st.button("実行", use_container_width=True, key="_btn_yen_run"):
-            st.rerun()
-
     st.subheader("シミュレーション設定（感応度分析）")
+    _sc1, _sc2 = st.columns(2)
+    with _sc1:
+        if st.button("初期値に戻す", use_container_width=True, key="_btn_sens_reset"):
+            for _sk, _sv in SCENARIO_SENSITIVITY_DEFAULTS.items():
+                st.session_state[_sk] = _sv
+            st.rerun()
+    with _sc2:
+        if st.button("実行", use_container_width=True, key="_btn_sens_run"):
+            st.rerun()
     downside_pct = st.slider(
         "下振れシナリオの売上減少率（％）",
         0.0,
@@ -544,20 +558,6 @@ with st.sidebar:
         1.0,
         key="_s_cut_other",
     )
-
-    st.subheader("感応度パラメータの操作")
-    _sc1, _sc2 = st.columns(2)
-    with _sc1:
-        if st.button("初期値に戻す", use_container_width=True, key="_btn_sens_reset"):
-            for _sk, _sv in SCENARIO_SENSITIVITY_DEFAULTS.items():
-                st.session_state[_sk] = _sv
-            st.rerun()
-    with _sc2:
-        if st.button("実行", use_container_width=True, key="_btn_sens_run"):
-            st.rerun()
-
-if st.session_state.get("_fmt_yen_rerun"):
-    st.rerun()
 
 base_costs = CostBreakdown(
     personnel=c_personnel,
