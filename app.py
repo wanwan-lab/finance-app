@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-AIランウェイ診断 — 経営者向けランウェイ簡易試算（Streamlit）
+ランウェイ診断 — 経営者向けランウェイ簡易試算（Streamlit）
 """
 
 from __future__ import annotations
@@ -317,9 +317,9 @@ def color_for_risk(key: str) -> str:
 # UI
 # ---------------------------------------------------------------------------
 
-st.set_page_config(page_title="AIランウェイ診断", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="ランウェイ診断", layout="wide", initial_sidebar_state="expanded")
 
-st.title("AIランウェイ診断")
+st.title("ランウェイ診断")
 st.caption("約3分で「あと何ヶ月もつか」をざっくり把握するためのダッシュボードです。")
 
 st.info(
