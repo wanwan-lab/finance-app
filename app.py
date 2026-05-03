@@ -91,14 +91,15 @@ class RunwayResult:
     shortfall_month: Optional[int]  # 初めて月末現金が0未満になる月（1始まり）、なければ None
 
 
-def gross_profit(monthly_revenue: float, gross_margin_pct: float) -> float:
-    return monthly_revenue * (gross_margin_pct / 100.0)
+def gross_profit(monthly_revenue: float, monthly_cogs: float) -> float:
+    """粗利 = 月次売上 − 月次仕入（認識ベース）。"""
+    return monthly_revenue - monthly_cogs
 
 
-def compute_burns(monthly_revenue: float, gross_margin_pct: float, costs: CostBreakdown) -> tuple[float, float]:
+def compute_burns(monthly_revenue: float, monthly_cogs: float, costs: CostBreakdown) -> tuple[float, float]:
     """Gross Burn = 月次支出合計。Net Burn = max(0, 支出 - 粗利)（認識ベース・サイトなしの当月）。"""
     expenditure = costs.total()
-    gp = gross_profit(monthly_revenue, gross_margin_pct)
+    gp = gross_profit(monthly_revenue, monthly_cogs)
     net_raw = expenditure - gp
     net_burn = max(0.0, net_raw)
     return expenditure, net_burn
@@ -152,7 +153,7 @@ def project_cash_monthly(
     initial_cash: float,
     base_monthly_sales: float,
     growth_pct: float,
-    gross_margin_pct: float,
+    monthly_cogs: float,
     costs: CostBreakdown,
     collection_lag_months: int,
     payment_lag_months: int,
@@ -167,11 +168,11 @@ def project_cash_monthly(
     cash_start = initial_cash
     for m in range(1, months + 1):
         rev = revenue_in_month(base_monthly_sales, growth_pct, m)
-        gp = gross_profit(rev, gross_margin_pct)
+        gp = gross_profit(rev, monthly_cogs)
         exp = costs.total()
 
         rev_cash = revenue_for_cash_month(m, collection_lag_months, base_monthly_sales, growth_pct)
-        gp_cash = gross_profit(rev_cash, gross_margin_pct)
+        gp_cash = gross_profit(rev_cash, monthly_cogs)
         exp_cash = expense_for_cash_month(m, payment_lag_months, expense_series)
 
         net_burn = max(0.0, exp_cash - gp_cash)
@@ -206,7 +207,7 @@ def runway_snapshot(
     initial_cash: float,
     monthly_revenue: float,
     growth_pct: float,
-    gross_margin_pct: float,
+    monthly_cogs: float,
     costs: CostBreakdown,
     collection_lag_months: int,
     payment_lag_months: int,
@@ -215,7 +216,7 @@ def runway_snapshot(
     expenditure = costs.total()
     expense_series = build_monthly_expense_series(costs, 12)
     rev_cash_m1 = revenue_for_cash_month(1, collection_lag_months, monthly_revenue, growth_pct)
-    gp_cash_m1 = gross_profit(rev_cash_m1, gross_margin_pct)
+    gp_cash_m1 = gross_profit(rev_cash_m1, monthly_cogs)
     exp_cash_m1 = expense_for_cash_month(1, payment_lag_months, expense_series)
     net_burn = max(0.0, exp_cash_m1 - gp_cash_m1)
 
@@ -223,7 +224,7 @@ def runway_snapshot(
         initial_cash,
         monthly_revenue,
         growth_pct,
-        gross_margin_pct,
+        monthly_cogs,
         costs,
         collection_lag_months,
         payment_lag_months,
@@ -280,7 +281,7 @@ def diagnostic_comment(base: RunwayResult, df_base: pd.DataFrame) -> tuple[str, 
 
     if base.net_burn <= 0:
         state_parts.append("いまのペースでは現金が減る心配はほぼありません（試算上）。")
-        risk_parts.append("売上の急落や粗利率の悪化があると状況は変わります。")
+        risk_parts.append("売上の急落や仕入・原価の増加があると状況は変わります。")
         action_parts.append("それでも売上の分散と固定費の見える化は続けましょう。")
     else:
         state_parts.append(
@@ -385,8 +386,18 @@ with st.sidebar:
     st.header("入力")
     cash = st.number_input("現預金残高（円）", min_value=0.0, value=8_000_000.0, step=100_000.0, format="%.0f")
     sales = st.number_input("月次売上（円／月）", min_value=0.0, value=3_000_000.0, step=50_000.0, format="%.0f")
+    cogs = st.number_input(
+        "月次仕入（円／月）",
+        min_value=0.0,
+        value=1_800_000.0,
+        step=50_000.0,
+        format="%.0f",
+        help="粗利は「月次売上 − 月次仕入」で計算します。シミュレーション中はこの仕入額を月ごとに一定とみなします。",
+    )
     growth = st.number_input("売上成長率（％／月）", min_value=-50.0, value=0.0, step=0.5, format="%.1f")
-    gm = st.number_input("粗利率（％）", min_value=0.0, max_value=100.0, value=40.0, step=1.0, format="%.1f")
+    if sales > 0:
+        implied_gm = max(0.0, min(100.0, (sales - cogs) / sales * 100.0))
+        st.caption(f"粗利率（参考）: {implied_gm:.1f}％（売上 − 仕入）")
 
     st.subheader("キャッシュのタイミング（サイト）")
     collection_lag = st.slider(
@@ -454,7 +465,7 @@ def build_runway_for_scenario(
         cash,
         eff_sales,
         growth,
-        gm,
+        cogs,
         costs,
         collection_lag_m,
         payment_lag_m,
@@ -463,7 +474,7 @@ def build_runway_for_scenario(
         cash,
         eff_sales,
         growth,
-        gm,
+        cogs,
         costs,
         collection_lag_m,
         payment_lag_m,
