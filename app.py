@@ -667,11 +667,7 @@ with kpi2:
 with kpi3:
     st.metric("ランウェイ（目安）", base_result.runway_label)
 with kpi4:
-    short_txt = (
-        "12ヶ月以内はなし"
-        if base_result.shortfall_month is None
-        else f"{base_result.shortfall_month} ヶ月目"
-    )
+    short_txt = "なし" if base_result.shortfall_month is None else f"{base_result.shortfall_month} ヶ月目"
     st.metric("資金ショートが出る月（12ヶ月試算内）", short_txt)
 
 st.caption(
@@ -702,9 +698,7 @@ for sk, spec in SCENARIO_SPECS.items():
             "グロスバーン（円／月）": rr.gross_burn,
             "ネットバーン（円／月）": rr.net_burn,
             "ランウェイ": rr.runway_label,
-            "資金ショート月（12ヶ月内・初回）": (
-                "12ヶ月以内はなし" if rr.shortfall_month is None else f"{rr.shortfall_month} ヶ月目"
-            ),
+            "資金ショート月（12ヶ月内・初回）": "なし" if rr.shortfall_month is None else f"{rr.shortfall_month} ヶ月目",
         }
     )
 
