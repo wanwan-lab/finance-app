@@ -444,7 +444,7 @@ with st.sidebar:
     st.caption("金額は #,##0 形式（1円単位・カンマ区切り）で表示・入力できます。")
 
     st.subheader("金額入力の操作")
-    _yc1, _yc2, _yc3 = st.columns(3)
+    _yc1, _yc2 = st.columns(2)
     with _yc1:
         if st.button("金額をクリア", use_container_width=True, key="_btn_yen_clear"):
             for _k in YEN_INPUT_KEYS:
@@ -456,9 +456,6 @@ with st.sidebar:
             for _k, _v in YEN_INPUT_DEFAULTS.items():
                 st.session_state[_k] = fmt_yen0(int(round(_v)))
             st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
-            st.rerun()
-    with _yc3:
-        if st.button("実行", use_container_width=True, key="_btn_yen_run"):
             st.rerun()
 
     cash = yen_text_input("現預金残高（円）", "_yen_inp_cash", YEN_INPUT_DEFAULTS["_yen_inp_cash"])
@@ -508,15 +505,10 @@ with st.sidebar:
     c_tax = yen_text_input("税金・社保", "_yen_inp_tax", YEN_INPUT_DEFAULTS["_yen_inp_tax"])
 
     st.subheader("シミュレーション設定（感応度分析）")
-    _sc1, _sc2 = st.columns(2)
-    with _sc1:
-        if st.button("初期値に戻す", use_container_width=True, key="_btn_sens_reset"):
-            for _sk, _sv in SCENARIO_SENSITIVITY_DEFAULTS.items():
-                st.session_state[_sk] = _sv
-            st.rerun()
-    with _sc2:
-        if st.button("実行", use_container_width=True, key="_btn_sens_run"):
-            st.rerun()
+    if st.button("初期値に戻す", use_container_width=True, key="_btn_sens_reset"):
+        for _sk, _sv in SCENARIO_SENSITIVITY_DEFAULTS.items():
+            st.session_state[_sk] = _sv
+        st.rerun()
     downside_pct = st.slider(
         "下振れシナリオの売上減少率（％）",
         0.0,
