@@ -96,9 +96,9 @@ def gross_profit(monthly_revenue: float, monthly_cogs: float) -> float:
     return monthly_revenue - monthly_cogs
 
 
-def fmt_sen_en(yen: float) -> str:
-    """円を千円単位・カンマ区切りで表示する（例: 8,000 千円）。"""
-    return f"{yen / 1000.0:,.0f} 千円"
+def fmt_yen0(yen: float) -> str:
+    """金額を1円単位で表示（Excel の #,##0 と同様・小数なし・3桁カンマ区切り）。"""
+    return f"{int(round(yen)):,}"
 
 
 def compute_burns(monthly_revenue: float, monthly_cogs: float, costs: CostBreakdown) -> tuple[float, float]:
@@ -290,7 +290,7 @@ def diagnostic_comment(base: RunwayResult, df_base: pd.DataFrame) -> tuple[str, 
         action_parts.append("それでも売上の分散と固定費の見える化は続けましょう。")
     else:
         state_parts.append(
-            f"毎月おおよそ {fmt_sen_en(base.net_burn)}ずつ現金が減る試算です（ネットバーン）。"
+            f"毎月おおよそ {fmt_yen0(base.net_burn)} 円ずつ現金が減る試算です（ネットバーン）。"
         )
         if base.runway_months is not None:
             state_parts.append(f"単純割りではランウェイは約 {base.runway_months:.1f} ヶ月です。")
@@ -389,17 +389,16 @@ def build_scenario_specs(
 
 with st.sidebar:
     st.header("入力")
-    st.caption("金額の入力は **千円** 単位です（例: 8000 → 800万円）。表・グラフ・KPIも千円表示です。CSVは円単位のままです。")
-    cash = st.number_input("現預金残高（千円）", min_value=0.0, value=8_000.0, step=100.0, format="%.0f") * 1000.0
-    sales = st.number_input("月次売上（千円／月）", min_value=0.0, value=3_000.0, step=50.0, format="%.0f") * 1000.0
+    cash = st.number_input("現預金残高（円）", min_value=0.0, value=8_000_000.0, step=100_000.0, format="%.0f")
+    sales = st.number_input("月次売上（円／月）", min_value=0.0, value=3_000_000.0, step=50_000.0, format="%.0f")
     cogs = st.number_input(
-        "月次仕入（千円／月）",
+        "月次仕入（円／月）",
         min_value=0.0,
-        value=1_800.0,
-        step=50.0,
+        value=1_800_000.0,
+        step=50_000.0,
         format="%.0f",
-        help="粗利は「月次売上 − 月次仕入」で計算します（内部は円で計算）。シミュレーション中はこの仕入額を月ごとに一定とみなします。",
-    ) * 1000.0
+        help="粗利は「月次売上 − 月次仕入」で計算します。シミュレーション中はこの仕入額を月ごとに一定とみなします。",
+    )
     growth = st.number_input("売上成長率（％／月）", min_value=-50.0, value=0.0, step=0.5, format="%.1f")
     if sales > 0:
         implied_gm = max(0.0, min(100.0, (sales - cogs) / sales * 100.0))
@@ -421,15 +420,15 @@ with st.sidebar:
         help="0で当月支払。固定費の支払タイミングをずらして計算します。",
     )
 
-    st.subheader("固定費の内訳（千円／月）")
-    c_personnel = st.number_input("人件費", min_value=0.0, value=1_200.0, step=10.0, format="%.0f") * 1000.0
-    c_rent = st.number_input("家賃", min_value=0.0, value=300.0, step=10.0, format="%.0f") * 1000.0
-    c_ad = st.number_input("広告費", min_value=0.0, value=150.0, step=10.0, format="%.0f") * 1000.0
-    c_out = st.number_input("外注費", min_value=0.0, value=200.0, step=10.0, format="%.0f") * 1000.0
-    c_sys = st.number_input("システム費", min_value=0.0, value=80.0, step=5.0, format="%.0f") * 1000.0
-    c_other = st.number_input("その他", min_value=0.0, value=120.0, step=10.0, format="%.0f") * 1000.0
-    c_loan = st.number_input("借入返済", min_value=0.0, value=100.0, step=10.0, format="%.0f") * 1000.0
-    c_tax = st.number_input("税金・社保", min_value=0.0, value=250.0, step=10.0, format="%.0f") * 1000.0
+    st.subheader("固定費の内訳（円／月）")
+    c_personnel = st.number_input("人件費", min_value=0.0, value=1_200_000.0, step=10_000.0, format="%.0f")
+    c_rent = st.number_input("家賃", min_value=0.0, value=300_000.0, step=10_000.0, format="%.0f")
+    c_ad = st.number_input("広告費", min_value=0.0, value=150_000.0, step=10_000.0, format="%.0f")
+    c_out = st.number_input("外注費", min_value=0.0, value=200_000.0, step=10_000.0, format="%.0f")
+    c_sys = st.number_input("システム費", min_value=0.0, value=80_000.0, step=5_000.0, format="%.0f")
+    c_other = st.number_input("その他", min_value=0.0, value=120_000.0, step=10_000.0, format="%.0f")
+    c_loan = st.number_input("借入返済", min_value=0.0, value=100_000.0, step=10_000.0, format="%.0f")
+    c_tax = st.number_input("税金・社保", min_value=0.0, value=250_000.0, step=10_000.0, format="%.0f")
 
     st.subheader("シミュレーション設定")
     downside_pct = st.slider("下振れシナリオの売上減少率（％）", 0.0, 80.0, 20.0, 1.0)
@@ -496,9 +495,9 @@ state_txt, risk_txt, action_txt = diagnostic_comment(base_result, df_base)
 # --- ダッシュボード KPI ---
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 with kpi1:
-    st.metric("月の支出の合計（グロスバーン）", fmt_sen_en(base_result.gross_burn))
+    st.metric("月の支出の合計（グロスバーン）", f"{fmt_yen0(base_result.gross_burn)} 円")
 with kpi2:
-    st.metric("月の現金の減り（ネットバーン）", fmt_sen_en(base_result.net_burn))
+    st.metric("月の現金の減り（ネットバーン）", f"{fmt_yen0(base_result.net_burn)} 円")
 with kpi3:
     st.metric("ランウェイ（目安）", base_result.runway_label)
 with kpi4:
@@ -525,8 +524,8 @@ for sk, spec in SCENARIO_SPECS.items():
     scenario_rows.append(
         {
             "シナリオ": spec.title,
-            "グロスバーン（千円／月）": rr.gross_burn,
-            "ネットバーン（千円／月）": rr.net_burn,
+            "グロスバーン（円／月）": rr.gross_burn,
+            "ネットバーン（円／月）": rr.net_burn,
             "ランウェイ": rr.runway_label,
             "資金ショート月（初回）": "—" if rr.shortfall_month is None else f"{rr.shortfall_month} ヶ月目",
         }
@@ -534,8 +533,8 @@ for sk, spec in SCENARIO_SPECS.items():
 
 df_compare = pd.DataFrame(scenario_rows)
 df_compare_show = df_compare.copy()
-for _col in ("グロスバーン（千円／月）", "ネットバーン（千円／月）"):
-    df_compare_show[_col] = df_compare_show[_col].map(lambda x: f"{x / 1000.0:,.0f}")
+for _col in ("グロスバーン（円／月）", "ネットバーン（円／月）"):
+    df_compare_show[_col] = df_compare_show[_col].map(fmt_yen0)
 st.dataframe(df_compare_show, use_container_width=True, hide_index=True)
 
 # グラフ: 全シナリオの月末現金（サイト・シミュレーション設定を反映）
@@ -545,11 +544,11 @@ for i, (title, dff) in enumerate(scenario_dfs.items()):
     fig.add_trace(
         go.Scatter(
             x=dff["月"],
-            y=dff["月末現金"] / 1000.0,
+            y=dff["月末現金"],
             mode="lines+markers",
             name=title,
             line=dict(width=2, color=colors[i % len(colors)]),
-            hovertemplate="月 %{x}<br>%{y:,.0f} 千円<extra></extra>",
+            hovertemplate="月 %{x}<br>%{y:,.0f} 円<extra></extra>",
         )
     )
 fig.add_hline(
@@ -557,17 +556,18 @@ fig.add_hline(
     line_color="red",
     line_width=2,
     line_dash="solid",
-    annotation_text="0千円ライン",
+    annotation_text="0円ライン",
     annotation_position="bottom right",
 )
 fig.update_layout(
     title="月末現金残高の推移（4シナリオ・サイト反映）",
     xaxis_title="経過月（今から何ヶ月後か）",
-    yaxis_title="千円",
+    yaxis_title="円",
     hovermode="x unified",
     height=460,
     legend=dict(orientation="h", yanchor="bottom", y=1.02),
 )
+fig.update_yaxes(tickformat=",.0f")
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("診断コメント（ルールベース）")
