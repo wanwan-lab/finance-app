@@ -101,13 +101,13 @@ def fmt_yen0(yen: float) -> str:
     return f"{int(round(yen)):,}"
 
 
-def yen_text_input(label: str, key: str, default_yen: float, help_: Optional[str] = None) -> float:
+def yen_text_input(label: str, key: str, default_yen: float, help: Optional[str] = None) -> float:
     """
     円のテキスト入力（#,##0 表示）。数字以外は無視して解釈し、確定時にカンマを整形する。
     """
     if key not in st.session_state:
         st.session_state[key] = fmt_yen0(int(round(default_yen)))
-    st.text_input(label, key=key, help=help_)
+    st.text_input(label, key=key, help=help)
     raw = str(st.session_state[key])
     if raw.strip() == "":
         return 0.0
@@ -358,19 +358,23 @@ st.info(
 
 ScenarioKey = Literal["base", "downside", "cost_up", "improve"]
 
-YEN_INPUT_KEYS: tuple[str, ...] = (
-    "_yen_inp_cash",
-    "_yen_inp_sales",
-    "_yen_inp_cogs",
-    "_yen_inp_personnel",
-    "_yen_inp_rent",
-    "_yen_inp_ad",
-    "_yen_inp_out",
-    "_yen_inp_sys",
-    "_yen_inp_other",
-    "_yen_inp_loan",
-    "_yen_inp_tax",
-)
+YEN_INPUT_DEFAULTS: dict[str, float] = {
+    "_yen_inp_cash": 8_000_000.0,
+    "_yen_inp_sales": 3_000_000.0,
+    "_yen_inp_cogs": 1_800_000.0,
+    "_yen_inp_personnel": 1_200_000.0,
+    "_yen_inp_rent": 300_000.0,
+    "_yen_inp_ad": 150_000.0,
+    "_yen_inp_out": 200_000.0,
+    "_yen_inp_sys": 80_000.0,
+    "_yen_inp_other": 120_000.0,
+    "_yen_inp_loan": 100_000.0,
+    "_yen_inp_tax": 250_000.0,
+}
+
+YEN_INPUT_KEYS: tuple[str, ...] = tuple(YEN_INPUT_DEFAULTS.keys())
+
+DEFAULT_GROWTH_PCT = 0.0
 
 SCENARIO_SENSITIVITY_DEFAULTS: dict[str, float] = {
     "_s_downside": 20.0,
@@ -434,18 +438,18 @@ with st.sidebar:
     st.header("入力")
     st.session_state["_fmt_yen_rerun"] = False
     st.caption("金額は #,##0 形式（1円単位・カンマ区切り）で表示・入力できます。")
-    cash = yen_text_input("現預金残高（円）", "_yen_inp_cash", 8_000_000.0)
-    sales = yen_text_input("月次売上（円／月）", "_yen_inp_sales", 3_000_000.0)
+    cash = yen_text_input("現預金残高（円）", "_yen_inp_cash", YEN_INPUT_DEFAULTS["_yen_inp_cash"])
+    sales = yen_text_input("月次売上（円／月）", "_yen_inp_sales", YEN_INPUT_DEFAULTS["_yen_inp_sales"])
     cogs = yen_text_input(
         "月次仕入（円／月）",
         "_yen_inp_cogs",
-        1_800_000.0,
+        YEN_INPUT_DEFAULTS["_yen_inp_cogs"],
         help="粗利は「月次売上 − 月次仕入」で計算します。シミュレーション中はこの仕入額を月ごとに一定とみなします。",
     )
     growth = st.number_input(
         "売上成長率（％／月）",
         min_value=-50.0,
-        value=0.0,
+        value=DEFAULT_GROWTH_PCT,
         step=0.5,
         format="%.1f",
         key="_inp_growth",
@@ -471,24 +475,30 @@ with st.sidebar:
     )
 
     st.subheader("固定費の内訳（円／月）")
-    c_personnel = yen_text_input("人件費", "_yen_inp_personnel", 1_200_000.0)
-    c_rent = yen_text_input("家賃", "_yen_inp_rent", 300_000.0)
-    c_ad = yen_text_input("広告費", "_yen_inp_ad", 150_000.0)
-    c_out = yen_text_input("外注費", "_yen_inp_out", 200_000.0)
-    c_sys = yen_text_input("システム費", "_yen_inp_sys", 80_000.0)
-    c_other = yen_text_input("その他", "_yen_inp_other", 120_000.0)
-    c_loan = yen_text_input("借入返済", "_yen_inp_loan", 100_000.0)
-    c_tax = yen_text_input("税金・社保", "_yen_inp_tax", 250_000.0)
+    c_personnel = yen_text_input("人件費", "_yen_inp_personnel", YEN_INPUT_DEFAULTS["_yen_inp_personnel"])
+    c_rent = yen_text_input("家賃", "_yen_inp_rent", YEN_INPUT_DEFAULTS["_yen_inp_rent"])
+    c_ad = yen_text_input("広告費", "_yen_inp_ad", YEN_INPUT_DEFAULTS["_yen_inp_ad"])
+    c_out = yen_text_input("外注費", "_yen_inp_out", YEN_INPUT_DEFAULTS["_yen_inp_out"])
+    c_sys = yen_text_input("システム費", "_yen_inp_sys", YEN_INPUT_DEFAULTS["_yen_inp_sys"])
+    c_other = yen_text_input("その他", "_yen_inp_other", YEN_INPUT_DEFAULTS["_yen_inp_other"])
+    c_loan = yen_text_input("借入返済", "_yen_inp_loan", YEN_INPUT_DEFAULTS["_yen_inp_loan"])
+    c_tax = yen_text_input("税金・社保", "_yen_inp_tax", YEN_INPUT_DEFAULTS["_yen_inp_tax"])
 
     st.subheader("金額入力の操作")
-    _yc1, _yc2 = st.columns(2)
+    _yc1, _yc2, _yc3 = st.columns(3)
     with _yc1:
         if st.button("金額をクリア", use_container_width=True, key="_btn_yen_clear"):
             for _k in YEN_INPUT_KEYS:
                 st.session_state[_k] = ""
-            st.session_state["_inp_growth"] = 0.0
+            st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
             st.rerun()
     with _yc2:
+        if st.button("金額をデフォルトに戻す", use_container_width=True, key="_btn_yen_default"):
+            for _k, _v in YEN_INPUT_DEFAULTS.items():
+                st.session_state[_k] = fmt_yen0(int(round(_v)))
+            st.session_state["_inp_growth"] = DEFAULT_GROWTH_PCT
+            st.rerun()
+    with _yc3:
         if st.button("実行", use_container_width=True, key="_btn_yen_run"):
             st.rerun()
 
