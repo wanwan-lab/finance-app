@@ -507,15 +507,10 @@ with st.sidebar:
         st.caption(f"粗利率（参考）: {implied_gm:.1f}％（売上 − 仕入）")
 
     st.subheader("キャッシュのタイミング（サイト）")
-    _st1, _st2 = st.columns(2)
-    with _st1:
-        if st.button("サイトを初期値に戻す", use_container_width=True, key="_btn_site_reset"):
-            for _lk, _lv in SITE_TIMING_DEFAULTS.items():
-                st.session_state[_lk] = _lv
-            st.rerun()
-    with _st2:
-        if st.button("実行", use_container_width=True, key="_btn_site_run"):
-            st.rerun()
+    if st.button("サイトを初期値に戻す", use_container_width=True, key="_btn_site_reset"):
+        for _lk, _lv in SITE_TIMING_DEFAULTS.items():
+            st.session_state[_lk] = _lv
+        st.rerun()
 
     collection_lag = st.slider(
         "入金サイト（売上を計上してから現金が入るまでの月数）",
